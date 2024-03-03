@@ -13,7 +13,7 @@ int main()
 	// program it any more.
 	Delay_Ms(5000);
 
-	printf("\r\n\r\nlow power example\r\n\r\n");
+	// printf("\r\n\r\nlow power example\r\n\r\n");
 
 	// Set all GPIOs to input pull up
 	RCC->APB2PCENR |= RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD;
@@ -81,12 +81,12 @@ int main()
 	PFIC->SCTLR |= (1 << 2);
 
 	uint16_t counter = 0;
-	printf("entering sleep loop\r\n");
+	// printf("entering sleep loop\r\n");
 
 	for (;;) {
 		__WFE();
 		// restore clock to full speed
 		SystemInit();
-		printf("\r\nawake, %u\r\n", counter++);
+		// printf("\r\nawake, %u\r\n", counter++);
 	}
 }

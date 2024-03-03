@@ -23,6 +23,12 @@ uint8_t button_pin = 0xFF;
 void button_onSingleClick();
 void button_onDoubleClick();
 
+void _reset_timers(uint8_t newState) {
+   ref_state = newState;
+   ref_debounce = timer_getTick();
+   ref_click = timer_getTick();
+}
+
 void button_setup(uint8_t pin) {
    if (pin == 0xFF) return; 
    button_pin = pin;
@@ -30,12 +36,6 @@ void button_setup(uint8_t pin) {
 	pinMode(pin, INPUT_PULLUP);
    timer_setup();
    _reset_timers(BUTTON_END);
-}
-
-void _reset_timers(uint8_t newState) {
-   ref_state = newState;
-   ref_debounce = timer_getTick();
-   ref_click = timer_getTick();
 }
 
 void button_run() {

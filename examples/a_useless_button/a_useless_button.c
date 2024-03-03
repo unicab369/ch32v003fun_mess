@@ -9,29 +9,115 @@
 
 #include "ch32v003fun.h"
 #include <stdio.h>
-#include "fun_button.h"
+#include "1Foundation/fun_button.h"
+#include "2Nrf/nrf24l01_main.h"
 
-#define BUTTON_PIN 0xC0
-#define LED_PIN 0xD0
+#define PIN_LOWPOWER 0xD3
+#define PIN_BUTTON 0xD2
+#define PIN_LED 0xA2
+#define PIN_MODE 0xA1
+
+void nrf_onReceive() {
+	digitalWrite(PIN_LED, !digitalRead(PIN_LED));
+}
+
+//######### Button
 
 void button_onSingleClick() {
    printf("\nI'M USELESS.");
-	digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+	digitalWrite(PIN_LED, !digitalRead(PIN_LED));
 }
 
 void button_onDoubleClick() {
    printf("\nI'M USELESS TWICE.");
 }
 
+void make_inputPullups() {
+	// Set all GPIOs to input pull up
+	RCC->APB2PCENR |= RCC_APB2Periph_GPIOA | RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD;
+
+	// GPIOA: Set to output
+	GPIOA->CFGLR = (GPIO_CNF_IN_PUPD<<(4*2)) | (GPIO_CNF_IN_PUPD<<(4*1));
+	GPIOA->BSHR = GPIO_BSHR_BS2 | GPIO_BSHR_BR1;
+
+	GPIOC->CFGLR = (GPIO_CNF_IN_PUPD<<(4*7)) | (GPIO_CNF_IN_PUPD<<(4*6)) |
+					(GPIO_CNF_IN_PUPD<<(4*5)) | (GPIO_CNF_IN_PUPD<<(4*4)) |
+					(GPIO_CNF_IN_PUPD<<(4*3)) | (GPIO_CNF_IN_PUPD<<(4*2)) |
+					(GPIO_CNF_IN_PUPD<<(4*1)) | (GPIO_CNF_IN_PUPD<<(4*0));
+	GPIOC->BSHR = GPIO_BSHR_BS7 | GPIO_BSHR_BS6 | GPIO_BSHR_BS5 | GPIO_BSHR_BS4 |
+					GPIO_BSHR_BS3 | GPIO_BSHR_BS2 | GPIO_BSHR_BS1 | GPIO_BSHR_BS0;
+
+	GPIOD->CFGLR = (GPIO_CNF_IN_PUPD<<(4*7)) | (GPIO_CNF_IN_PUPD<<(4*6)) |
+					(GPIO_CNF_IN_PUPD<<(4*5)) | (GPIO_CNF_IN_PUPD<<(4*4)) |
+					(GPIO_CNF_IN_PUPD<<(4*3)) | (GPIO_CNF_IN_PUPD<<(4*2)) |
+					(GPIO_CNF_IN_PUPD<<(4*0));
+	GPIOD->BSHR = GPIO_BSHR_BS7 | GPIO_BSHR_BS6 | GPIO_BSHR_BS5 | GPIO_BSHR_BS4 |
+					GPIO_BSHR_BS3 | GPIO_BSHR_BS2 | GPIO_BSHR_BS0;
+	
+}
+
+void sleepMode_setup() {
+	// enable power interface module clock
+	RCC->APB1PCENR |= RCC_APB1Periph_PWR;
+
+	// enable low speed oscillator (LSI)
+	RCC->RSTSCKR |= RCC_LSION;
+	while ((RCC->RSTSCKR & RCC_LSIRDY) == 0) {}
+
+	// enable AutoWakeUp event
+	EXTI->EVENR |= EXTI_Line9;
+	EXTI->FTENR |= EXTI_Line9;
+
+	PWR->AWUPSC |= PWR_AWU_Prescaler_4096;		// configure AWU prescaler
+	PWR->AWUWR &= ~0x3f; PWR->AWUWR |= 63;		// configure AWU window comparison value
+	PWR->AWUCSR |= (1 << 1);						// enable AWU
+	PWR->CTLR |= PWR_CTLR_PDDS;					// select standby on power-down	
+	PFIC->SCTLR |= (1 << 2);						// peripheral interrupt controller send to deep sleep
+}
+
+//######### MAIN
 int main()
 {  
-	pinMode(LED_PIN, OUTPUT);
-	button_setup(BUTTON_PIN);
+	SystemInit();
 
-	printf("looping...\n\r");
-	while(1)
-	{
-		button_run();
+	pinMode(PIN_LED, OUTPUT);
+	pinMode(PIN_LOWPOWER, INPUT_PULLUP);
+	pinMode(PIN_MODE, INPUT_PULLUP);
+	button_setup(PIN_BUTTON);
+
+	uint8_t readLowpower = digitalRead(PIN_LOWPOWER);
+	// printf("\nRead=%u", readLowpower);
+
+	if (readLowpower == 1) {
+		Delay_Ms(3000);
+		make_inputPullups();
+		sleepMode_setup();
+
+		for(;;) {
+			__WFE();
+			SystemInit();
+			pinMode(0xC3, OUTPUT);
+			digitalWrite(0xC3, 1);
+			nrf_setup(0);
+			send();
+			digitalWrite(0xC3, 0);
+			make_inputPullups();
+			pinMode(0xC3, INPUT_PULLDOWN);
+		}
+	} else {
+		uint8_t readMode = digitalRead(PIN_MODE);
+		printf("\nMOde=%u", readMode);
+		nrf_setup(readMode);
+
+		// GPIO D0 Push-Pull for RX notification
+		RCC->APB2PCENR |= RCC_APB2Periph_GPIOD;
+		GPIOD->CFGLR &= ~(0xf<<(4*4));
+		GPIOD->CFGLR |= (GPIO_Speed_10MHz | GPIO_CNF_OUT_PP)<<(4*4);
+
+		for(;;) {
+			nrf_run(readMode);
+			button_run();
+		}
 	}
 }
 

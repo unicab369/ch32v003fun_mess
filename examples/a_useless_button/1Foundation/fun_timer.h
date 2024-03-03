@@ -60,9 +60,9 @@ void SysTick_Handler(void)
 
 void timer_setup() {
 	// init systick @ 1ms rate
-	printf("initializing systick...");
+	// printf("initializing systick...");
 	systick_init();
-	printf("done.\n\r");
+	// printf("done.\n\r");
 }
 
 uint32_t timer_getTick() {
