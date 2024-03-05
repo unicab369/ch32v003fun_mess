@@ -87,6 +87,7 @@ int main()
 		__WFE();
 		// restore clock to full speed
 		SystemInit();
+		Delay_Ms(1000);
 		// printf("\r\nawake, %u\r\n", counter++);
 	}
 }

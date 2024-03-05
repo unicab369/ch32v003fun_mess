@@ -114,6 +114,34 @@ void send() {
 	}
 }
 
+void sendData(void* data, size_t size) {
+	uint8_t tx_cmd_status = nrf24_transmit((uint8_t*)data, size, ACK_MODE);
+	
+	switch (tx_cmd_status) {
+		case TRANSMIT_BEGIN:
+			// printf("***		sending package\n\r");
+			break;
+		case TRANSMIT_FAIL:
+			// printf("EEE		unable to send package\n\r");
+			break;
+	}
+	
+	Delay_Ms(50);					// give the nRF some time to send
+	// print_debug();
+
+	switch (nrf24_transmit_status()) {
+		case TRANSMIT_DONE:
+			// printf("*OK		sent: %u\n\r", ascending_number);
+			break;
+		case TRANSMIT_FAILED:
+			// printf("EEE		no ACK received!!\n\r");
+			break;
+		case TRANSMIT_IN_PROGRESS:
+			// printf("EEE		still transmitting???\n\r");
+			break;
+	}
+}
+
 void nrf_setup(uint8_t isReceive) {
 	if (isReceive == 1) {
 		// printf("initializing radio as RX...");

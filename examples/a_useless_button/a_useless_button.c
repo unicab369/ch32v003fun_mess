@@ -7,15 +7,21 @@
  * by unicab369
  */
 
+// .\minichlink.exe -u
+// make all monitor
+
 #include "ch32v003fun.h"
 #include <stdio.h>
-#include "1Foundation/fun_button.h"
-#include "2Nrf/nrf24l01_main.h"
+#include "1_Foundation/fun_button.h"
+#include "2_Device/i2c_main.h"
+#include "3_Nrf/nrf24l01_main.h"
 
-#define PIN_LOWPOWER 0xD3
+// #define PIN_LOWPOWER 0xD3
+#define PIN_LOWPOWER 0xD4
 #define PIN_BUTTON 0xD2
 #define PIN_LED 0xA2
 #define PIN_MODE 0xA1
+#define PIN_DONE 0xD0
 
 void nrf_onReceive() {
 	digitalWrite(PIN_LED, !digitalRead(PIN_LED));
@@ -56,7 +62,7 @@ void make_inputPullups() {
 	
 }
 
-void sleepMode_setup() {
+void sleepMode_setup(uint8_t useButton) {
 	// enable power interface module clock
 	RCC->APB1PCENR |= RCC_APB1Periph_PWR;
 
@@ -71,53 +77,84 @@ void sleepMode_setup() {
 	PWR->AWUPSC |= PWR_AWU_Prescaler_4096;		// configure AWU prescaler
 	PWR->AWUWR &= ~0x3f; PWR->AWUWR |= 63;		// configure AWU window comparison value
 	PWR->AWUCSR |= (1 << 1);						// enable AWU
+
+	//# standby_btn
+	if (useButton) {
+		RCC->APB2PCENR |= RCC_AFIOEN;							// AFIO is needed for EXTI
+		AFIO->EXTICR |= (uint32_t)(0b11 << (2*2));		// assign pin 2 interrupt from portD (0b11) to EXTI channel 2
+
+		// enable line2 interrupt event
+		EXTI->EVENR |= EXTI_Line2;
+		EXTI->FTENR |= EXTI_Line2;
+	}
+
+	//# sleep
 	PWR->CTLR |= PWR_CTLR_PDDS;					// select standby on power-down	
 	PFIC->SCTLR |= (1 << 2);						// peripheral interrupt controller send to deep sleep
 }
 
 //######### MAIN
-int main()
-{  
+int main() {  
 	SystemInit();
-
+	
 	pinMode(PIN_LED, OUTPUT);
 	pinMode(PIN_LOWPOWER, INPUT_PULLUP);
 	pinMode(PIN_MODE, INPUT_PULLUP);
-	button_setup(PIN_BUTTON);
+	pinMode(0xC3, OUTPUT);
+	pinMode(PIN_DONE, OUTPUT);
 
+	I2CInit(0xC1, 0xC2, 100000);
+	BH17_Setup();
+	nrf_setup(0);
+
+	// button_setup(PIN_BUTTON);
+
+	// lowPower flag INPUT_PULLUP, Low for OFF
 	uint8_t readLowpower = digitalRead(PIN_LOWPOWER);
-	// printf("\nRead=%u", readLowpower);
+	struct SensorData readings = { 0, 0, 0, 0, 0 };
 
-	if (readLowpower == 1) {
-		Delay_Ms(3000);
-		make_inputPullups();
-		sleepMode_setup();
-
-		for(;;) {
-			__WFE();
-			SystemInit();
-			pinMode(0xC3, OUTPUT);
-			digitalWrite(0xC3, 1);
-			nrf_setup(0);
-			send();
-			digitalWrite(0xC3, 0);
-			make_inputPullups();
-			pinMode(0xC3, INPUT_PULLDOWN);
-		}
-	} else {
-		uint8_t readMode = digitalRead(PIN_MODE);
-		printf("\nMOde=%u", readMode);
-		nrf_setup(readMode);
-
-		// GPIO D0 Push-Pull for RX notification
-		RCC->APB2PCENR |= RCC_APB2Periph_GPIOD;
-		GPIOD->CFGLR &= ~(0xf<<(4*4));
-		GPIOD->CFGLR |= (GPIO_Speed_10MHz | GPIO_CNF_OUT_PP)<<(4*4);
-
-		for(;;) {
-			nrf_run(readMode);
-			button_run();
-		}
+	for(;;) {
+		i2c_getReadings(&readings);
+		printf("\n\rtemp=%lu, hum=%lu, lux=%lu, v=%lu, mA=%lu", 
+					readings.tempF, readings.hum, readings.lux, readings.voltage, readings.mA);
+		sendData(&readings, sizeof(readings));
+		Delay_Ms(2000);
 	}
+
+	// if (readLowpower == 1) {
+	// 	Delay_Ms(3500);
+	// 	make_inputPullups();
+	// 	sleepMode_setup(1);
+
+	// 	for(;;) {
+	// 		__WFE();
+	// 		SystemInit();
+
+	// 		digitalWrite(0xC3, 0);
+	// 		nrf_setup(0);
+	// 		send();
+	// 		send();
+	// 		digitalWrite(0xC3, 1);
+	// 		digitalWrite(PIN_DONE, 1);
+	// 		// Delay_Ms(1000);
+	// 		// // make_inputPullups();
+	// 		// // pinMode(0xC3, INPUT_PULLDOWN);
+	// 	}
+	// } 
+	// else {
+	// 	uint8_t readMode = digitalRead(PIN_MODE);
+	// 	printf("\nMOde=%u", readMode);
+	// 	nrf_setup(readMode);
+
+	// 	// GPIO D0 Push-Pull for RX notification
+	// 	RCC->APB2PCENR |= RCC_APB2Periph_GPIOD;
+	// 	GPIOD->CFGLR &= ~(0xf<<(4*4));
+	// 	GPIOD->CFGLR |= (GPIO_Speed_10MHz | GPIO_CNF_OUT_PP)<<(4*4);
+
+	// 	for(;;) {
+	// 		nrf_run(readMode);
+	// 		button_run();
+	// 	}
+	// }
 }
 
