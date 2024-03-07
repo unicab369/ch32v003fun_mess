@@ -35,7 +35,7 @@ void print_debug() {
 }
 
 //######### RX fn
-void nrf_onReceive();
+void nrf_onReceive(uint8_t* data);
 
 uint8_t recvnumber() {
 	return nrf24_receive(&ascending_number, 1);
@@ -48,7 +48,10 @@ uint8_t recvstr() {
 void receive() {
 	// to switch between sending an uint8_t and a 16-byte-char-array, just uncomment one of these two:
 	//uint8_t result = recvnumber();
-	uint8_t result = recvstr();
+	// uint8_t result = recvstr();
+	struct SensorData readings;
+	uint8_t result = nrf24_receive((uint8_t*)&readings, sizeof(readings));
+
 	// also uncomment the corresponding one for case OPERATION_DONE
 
 	//print_debug();
@@ -61,7 +64,7 @@ void receive() {
 			//printf("      RX empty, last received: %u", ascending_number);
 			break;
 		case OPERATION_DONE:
-         nrf_onReceive();
+         nrf_onReceive(&readings);
 			// pick one of these two:
 			printf("***   RX success, received: %u\n\r", ascending_number);
 			// printf("***   RX success, received: %s\n\r", txt);

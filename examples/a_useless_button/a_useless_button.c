@@ -19,12 +19,18 @@
 // #define PIN_LOWPOWER 0xD3
 #define PIN_LOWPOWER 0xD4
 #define PIN_BUTTON 0xD2
-#define PIN_LED 0xA2
+// #define PIN_LED 0xA2
+#define PIN_LED 0xD0
 #define PIN_MODE 0xA1
-#define PIN_DONE 0xD0
+#define PIN_DONE 0xC3
 
-void nrf_onReceive() {
+void nrf_onReceive(uint8_t* data) {
 	digitalWrite(PIN_LED, !digitalRead(PIN_LED));
+	struct SensorData* receivedData = (struct SensorData*) data;
+
+	printf("\n\rRecieved");
+	printf("\n\rtemp=%lu, hum=%lu, lux=%lu, v=%lu, mA=%lu", 
+				receivedData->tempF, receivedData->hum, receivedData->lux, receivedData->voltage, receivedData->mA);
 }
 
 //######### Button
@@ -74,6 +80,11 @@ void sleepMode_setup(uint8_t useButton) {
 	EXTI->EVENR |= EXTI_Line9;
 	EXTI->FTENR |= EXTI_Line9;
 
+	//# t = AWUWR*AWUPSC/fLSI
+	// fLSI = 128000
+	// AWUWR = 1 to 63
+	// AWUPSC = 2048, 4096, 10240 or 61440, though lower values are possible.    
+
 	PWR->AWUPSC |= PWR_AWU_Prescaler_4096;		// configure AWU prescaler
 	PWR->AWUWR &= ~0x3f; PWR->AWUWR |= 63;		// configure AWU window comparison value
 	PWR->AWUCSR |= (1 << 1);						// enable AWU
@@ -105,7 +116,6 @@ int main() {
 
 	I2CInit(0xC1, 0xC2, 100000);
 	BH17_Setup();
-	nrf_setup(0);
 
 	// button_setup(PIN_BUTTON);
 
@@ -113,12 +123,32 @@ int main() {
 	uint8_t readLowpower = digitalRead(PIN_LOWPOWER);
 	struct SensorData readings = { 0, 0, 0, 0, 0 };
 
-	for(;;) {
-		i2c_getReadings(&readings);
-		printf("\n\rtemp=%lu, hum=%lu, lux=%lu, v=%lu, mA=%lu", 
-					readings.tempF, readings.hum, readings.lux, readings.voltage, readings.mA);
-		sendData(&readings, sizeof(readings));
-		Delay_Ms(2000);
+	// readLowpower == 1
+	if (readLowpower == 0) {
+		printf("\n\rIM HERE 1111");
+		nrf_setup(0);
+
+		for(;;) {
+			i2c_getReadings(&readings);
+			printf("\n\rtemp=%lu, hum=%lu, lux=%lu, v=%lu, mA=%lu", 
+						readings.tempF, readings.hum, readings.lux, readings.voltage, readings.mA);
+			sendData(&readings, sizeof(readings));
+			digitalWrite(PIN_LED, !digitalRead(PIN_LED));
+			digitalWrite(PIN_DONE, 1);
+			Delay_Ms(2000);
+		}
+	} else {
+		printf("\n\rIM HERE 2222");
+		nrf_setup(1);
+
+		// GPIO D0 Push-Pull for RX notification
+		RCC->APB2PCENR |= RCC_APB2Periph_GPIOD;
+		GPIOD->CFGLR &= ~(0xf<<(4*4));
+		GPIOD->CFGLR |= (GPIO_Speed_10MHz | GPIO_CNF_OUT_PP)<<(4*4);
+
+		for(;;) {
+			nrf_run(1);
+		}
 	}
 
 	// if (readLowpower == 1) {
